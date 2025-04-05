@@ -30,5 +30,4 @@ app.get('/health', (req, res) => {
 // Start server
 app.listen(config.port, () => {
   console.log(`Server running on port ${config.port}`);
-  console.log(`Chat endpoint available at: http://localhost:${config.port}/chat`);
 }); 
