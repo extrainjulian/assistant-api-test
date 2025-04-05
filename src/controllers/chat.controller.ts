@@ -4,7 +4,7 @@ import { ChatRequestDto } from '../dto/chat.dto';
 
 export const streamChat = async (req: Request<{}, {}, ChatRequestDto>, res: Response): Promise<void> => {
   try {
-    const { prompt = "Why is the sky blue?" } = req.body;
+    const { prompt } = req.body;
     
     // Set headers for streaming
     res.setHeader('Content-Type', 'text/plain');
