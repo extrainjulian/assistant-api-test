@@ -20,7 +20,7 @@ class GeminiService {
   };
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
+    this.ai = new GoogleGenAI({ vertexai: true, project: config.googleCloudProject, location: config.googleCloudLocation });
   }
 
   // Keep the old method for potential single-turn use cases
