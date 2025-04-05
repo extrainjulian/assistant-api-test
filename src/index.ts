@@ -1,6 +1,6 @@
 import express from 'express';
 import config from './config/env';
-import chatRoutes from './routes/chat.routes';
+import chatRoutes from './routes/routes';
 import authenticateToken from './middleware/auth.middleware';
 import cors from 'cors';
 
