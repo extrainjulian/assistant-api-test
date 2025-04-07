@@ -22,3 +22,7 @@ npm-debug.log*
 # System Files
 .DS_Store
 Thumbs.db 
+
+# Vertex AI
+vertex-ai-455917-7a17dc1534c0.json
+vertex-ai-455917-7a17dc1534c0.json

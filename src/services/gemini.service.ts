@@ -45,6 +45,7 @@ class GeminiService {
         credentials: credentials
       },
     });
+    this.ai = new GoogleGenAI({ vertexai: true, project: config.googleCloudProject, location: config.googleCloudLocation });
   }
 
   // Keep the old method for potential single-turn use cases

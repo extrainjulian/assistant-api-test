@@ -41,4 +41,14 @@ if (!config.gcpServiceAccountKeyJsonB64) {
   process.exit(1);
 }
 
+if (!config.googleCloudProject) {
+  console.error('GOOGLE_CLOUD_PROJECT is required but not provided in environment variables');
+  process.exit(1);
+}
+
+if (!config.googleCloudLocation) {
+  console.error('GOOGLE_CLOUD_LOCATION is required but not provided in environment variables');
+  process.exit(1);
+}
+
 export default config; 
