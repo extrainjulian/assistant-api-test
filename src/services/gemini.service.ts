@@ -20,7 +20,7 @@ class GeminiService {
   };
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
+    this.ai = new GoogleGenAI({  apiKey: config.googleCloudApiKey });
   }
 
   // Keep the old method for potential single-turn use cases
