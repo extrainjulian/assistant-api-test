@@ -20,6 +20,31 @@ class GeminiService {
   };
 
   constructor() {
+    let credentials;
+    try {
+      // Decode the Base64 string back to the JSON string
+      const decodedJsonString = Buffer.from(config.gcpServiceAccountKeyJsonB64, 'base64').toString('utf-8');
+      
+      // Parse the decoded JSON string into an object
+      credentials = JSON.parse(decodedJsonString);
+
+      console.log('Successfully decoded and parsed credentials from Base64 environment variable.');
+
+    } catch (error) {
+      console.error('FATAL ERROR: Could not decode or parse Base64 credentials from environment variable:', error);
+      // Possible causes: Variable not set, not valid Base64, resulting string not valid JSON
+      process.exit(1);
+    }
+
+    this.ai = new GoogleGenAI({
+      vertexai: true,
+      project: config.googleCloudProject,
+      location: config.googleCloudLocation,
+      googleAuthOptions: {
+        // Use the parsed credentials object
+        credentials: credentials
+      },
+    });
     this.ai = new GoogleGenAI({ vertexai: true, project: config.googleCloudProject, location: config.googleCloudLocation });
   }
 
