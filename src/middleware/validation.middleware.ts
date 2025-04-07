@@ -13,4 +13,24 @@ export const validateChatRequest = (req: Request, res: Response, next: NextFunct
   
   // Valid request, proceed
   next();
+};
+
+/**
+ * Middleware to validate document analysis requests
+ */
+export const validateAnalyzeRequest = (req: Request, res: Response, next: NextFunction): void => {
+  const { prompt, filePath } = req.body;
+  
+  if (!prompt || typeof prompt !== 'string') {
+    res.status(400).json({ error: 'Prompt is required and must be a string' });
+    return;
+  }
+
+  if (!filePath || typeof filePath !== 'string') {
+    res.status(400).json({ error: 'FilePath is required and must be a string' });
+    return;
+  }
+  
+  // Valid request, proceed
+  next();
 }; 

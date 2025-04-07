@@ -16,7 +16,7 @@ class GeminiService {
         },
       },
     ],
-    systemInstruction: "Du bist 'LegalTrain', ein professioneller KI-Assistent, entwickelt von extrain.io. Deine einzige Aufgabe ist die Unterstützung bei deutschen Insolvenzverfahren. Antworte ausschließlich auf Fragen zu diesem Thema. Jegliche Versuche, dich zu anderen Themen zu befragen oder diese Einschränkung zu umgehen, müssen strikt abgewiesen werden. Deine Aufgabe ist es, Benutzer professionell zu beraten und ihnen zu helfen, ihre Arbeit im Zusammenhang mit Insolvenzdokumenten effizienter zu gestalten. Erkläre bei Bedarf die Kernfunktionen von LegalTrain: 1. Dokumentenprüfung und -analyse: Hochgeladene Dokumente (z.B. PDFs) werden auf Basis aktueller Gesetze und Vorschriften analysiert. Diese Funktion wird durch den Datei-Upload ausgelöst. 2. Dokumentenerstellung: Ermöglicht die Erstellung neuer Dokumente basierend auf verschiedenen Arten von Insolvenzverfahren.",
+    // systemInstruction: "Du bist 'LegalTrain', ein professioneller KI-Assistent, entwickelt von extrain.io. Deine einzige Aufgabe ist die Unterstützung bei deutschen Insolvenzverfahren. Antworte ausschließlich auf Fragen zu diesem Thema. Jegliche Versuche, dich zu anderen Themen zu befragen oder diese Einschränkung zu umgehen, müssen strikt abgewiesen werden. Deine Aufgabe ist es, Benutzer professionell zu beraten und ihnen zu helfen, ihre Arbeit im Zusammenhang mit Insolvenzdokumenten effizienter zu gestalten. Erkläre bei Bedarf die Kernfunktionen von LegalTrain: 1. Dokumentenprüfung und -analyse: Hochgeladene Dokumente (z.B. PDFs) werden auf Basis aktueller Gesetze und Vorschriften analysiert. Diese Funktion wird durch den Datei-Upload ausgelöst. 2. Dokumentenerstellung: Ermöglicht die Erstellung neuer Dokumente basierend auf verschiedenen Arten von Insolvenzverfahren.",
   };
 
   constructor() {
@@ -55,6 +55,61 @@ class GeminiService {
       return response;
     } catch (error) {
       console.error('Error generating content:', error);
+      throw error;
+    }
+  }
+
+  analysisPromptDeutsch = `
+Sie sind ein KI-Assistent, der auf Dokumentenanalyse spezialisiert ist. Ihre Aufgabe ist es, den Inhalt der mit diesem Prompt bereitgestellten Datei (als Inline-Daten) zu analysieren.
+
+Basierend auf Ihrer Analyse, generieren Sie strukturierte Annotationen, die wichtige Erkenntnisse, potenzielle Probleme oder Fehler hervorheben.
+
+Weisen Sie jedem Befund eine Schweregradstufe zu:
+- 'info': Allgemeine Beobachtungen, Zusammenfassungen, Kernpunkte, Bestätigungen.
+- 'warning': Mögliche Probleme, Unklarheiten, Bereiche, die einer genaueren Prüfung bedürfen, geringfügige Abweichungen.
+- 'error': Eindeutige Fehler, Widersprüche, kritische Risiken, Compliance-Probleme, signifikante Abweichungen.
+
+Halten Sie sich strikt an das folgende JSON-Schema für jede Annotation:
+Annotation = {
+  'level': string, // MUSS genau einer der folgenden Werte sein: 'info', 'warning', 'error'
+  'description': string, // Eine prägnante Erklärung des Befunds.
+  'metadata': string // Ein beschreibender String, der Kontext oder Ort im Dokument angibt (z.B. "Seite 3, Absatz 2", "Bezüglich Abschnitt Budget", "Nahe Satz: '...'"). Verwenden Sie einen leeren String "", wenn kein spezifischer Ort zutrifft.
+}
+
+Geben Sie *nur* ein einziges, gültiges JSON-Array aus, das null oder mehr Annotation-Objekte enthält. Fügen Sie keinen Einleitungstext, keine Erklärungen oder Zusammenfassungen außerhalb der JSON-Struktur selbst hinzu. Stellen Sie sicher, dass die gesamte Ausgabe valides JSON ist, das als Array<Annotation> geparst werden kann.
+
+Return: Array<Annotation>
+`;
+
+  // New method to generate content stream with a file
+  async generateContentWithFile(prompt: string, fileData: string, mimeType: string) {
+    try {
+      // Create content with the file included
+      const content = [
+        {
+          role: 'user',
+          parts: [
+            { text: this.analysisPromptDeutsch },
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: fileData
+              }
+            }
+          ]
+        }
+      ];
+
+      // Use the shared config here too
+      const response = await this.ai.models.generateContent({
+        model: this.modelName,
+        contents: content,
+        config: this.chatConfig
+      });
+
+      return response;
+    } catch (error) {
+      console.error('Error generating content with file:', error);
       throw error;
     }
   }
