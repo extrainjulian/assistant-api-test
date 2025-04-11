@@ -1,11 +1,11 @@
 import { GoogleGenAI, Chat, Content, GenerateContentConfig } from '@google/genai';
-import { randomUUID } from 'crypto'; // Need to import UUID generator
 import config from '../config/env';
+import supabaseService from '../services/supabase.service';
+import { analysisPromptDeutsch } from '../utils/prompts';
 
 class GeminiService {
   private ai: GoogleGenAI;
   private modelName: string = 'gemini-2.5-pro-preview-03-25';
-  private activeChats: Map<string, Chat> = new Map(); // Store active chats
 
   // Define chat configuration separately for reusability
   private chatConfig: GenerateContentConfig = {
@@ -42,54 +42,18 @@ class GeminiService {
     });
   }
 
-  // Keep the old method for potential single-turn use cases
-  async generateContentStream(prompt: string) {
+  // Method to generate annotations for document files
+  async generateAnnotations(prompt: string, fileData: string, mimeType: string) {
     try {
-      // Use the shared config here too
-      const response = await this.ai.models.generateContentStream({
-        model: this.modelName,
-        contents: [{ role: 'user', parts: [{ text: prompt }] }], // Ensure correct Content structure
-        config: this.chatConfig
-      });
-
-      return response;
-    } catch (error) {
-      console.error('Error generating content:', error);
-      throw error;
-    }
-  }
-
-  analysisPromptDeutsch = `
-Sie sind ein KI-Assistent, der auf Dokumentenanalyse spezialisiert ist. Ihre Hauptaufgabe ist es, Probleme und Fehler in Dokumenten zu erkennen und konkrete Verbesserungsvorschläge zu liefern. Ihr Ziel ist es, den Nutzer effizienter zu machen und ihn bei der Verbesserung seiner Dokumente zu unterstützen.
-
-Analysieren Sie den Inhalt der mit diesem Prompt bereitgestellten Datei (als Inline-Daten) und generieren Sie strukturierte Annotationen zu Problemen, Fehlern und Verbesserungsmöglichkeiten.
-
-Weisen Sie jedem Befund eine Schweregradstufe zu:
-- 'info': NUR für relevante Verbesserungsvorschläge verwenden, die das Dokument optimieren könnten. Keine allgemeinen Beobachtungen oder Zusammenfassungen ohne konkrete Handlungsempfehlung.
-- 'warning': Mögliche Probleme, Unklarheiten, Bereiche, die einer genaueren Prüfung bedürfen, oder geringfügige Abweichungen, die korrigiert werden sollten.
-- 'error': Eindeutige Fehler, Widersprüche, kritische Risiken, Compliance-Probleme oder signifikante Abweichungen, die dringend behoben werden müssen.
-
-Halten Sie sich strikt an das folgende JSON-Schema für jede Annotation:
-Annotation = {
-  'level': string, // MUSS genau einer der folgenden Werte sein: 'info', 'warning', 'error'
-  'description': string, // Eine prägnante Erklärung des Problems und ein konkreter Verbesserungsvorschlag.
-  'metadata': string // Ein beschreibender String, der Kontext oder Ort im Dokument angibt (z.B. "Seite 3, Absatz 2", "Bezüglich Abschnitt Budget", "Nahe Satz: '...'"). Verwenden Sie einen leeren String "", wenn kein spezifischer Ort zutrifft.
-}
-
-Geben Sie *nur* ein einziges, gültiges JSON-Array aus, das null oder mehr Annotation-Objekte enthält. Fügen Sie keinen Einleitungstext, keine Erklärungen oder Zusammenfassungen außerhalb der JSON-Struktur selbst hinzu. Stellen Sie sicher, dass die gesamte Ausgabe valides JSON ist, das als Array<Annotation> geparst werden kann.
-
-Return: Array<Annotation>
-`;
-
-  // New method to generate content stream with a file
-  async generateContentWithFile(prompt: string, fileData: string, mimeType: string) {
-    try {
-      // Create content with the file included
+      // Replace the placeholder in the prompt with the user's input
+      const customizedPrompt = analysisPromptDeutsch.replace('{{userPrompt}}', prompt);
+      
+      // Create content with the file included and user prompt
       const content = [
         {
           role: 'user',
           parts: [
-            { text: this.analysisPromptDeutsch },
+            { text: customizedPrompt },
             {
               inlineData: {
                 mimeType: mimeType,
@@ -109,113 +73,64 @@ Return: Array<Annotation>
 
       return response;
     } catch (error) {
-      console.error('Error generating content with file:', error);
+      console.error('Error generating annotations:', error);
       throw error;
     }
   }
 
-  // Refactored method for stateful chat
-  async sendMessageToChatStream(prompt: string, inputChatId?: string): Promise<{ stream: AsyncGenerator<any, any, unknown>; chatId: string }> {
-    let chat: Chat | undefined;
-    let currentChatId: string; // Ensure this is string before message sending try block
-
-    // --- Stage 1: Determine Chat Instance and Definite Chat ID --- 
+  // New method for handling chat sessions with history from Supabase
+  async sendMessageToChatStreamWithHistory(
+    prompt: string, 
+    history?: Content[], 
+    filePaths?: string[],
+    jwt?: string
+  ): Promise<{ stream: AsyncGenerator<any, any, unknown>; updatedHistory: Content[] }> {
     try {
-      if (inputChatId) {
-        chat = this.activeChats.get(inputChatId);
-        if (chat) {
-          currentChatId = inputChatId; // Valid existing chat
-          console.log(`Continuing chat session with ID: ${currentChatId}`);
-        } else {
-          // Input ID provided but not found - start new chat with new ID
-          console.log(`Chat ID ${inputChatId} not found. Starting new chat session...`);
-          currentChatId = randomUUID();
-          chat = this.ai.chats.create({
-            model: this.modelName,
-            config: this.chatConfig,
-          });
-          this.activeChats.set(currentChatId, chat);
-          console.log(`New chat session created with ID: ${currentChatId}`);
-
-          // --- Simple In-Memory Cleanup --- 
-          if (this.activeChats.size > 20) {
-            // Get the first (oldest) key from the map iterator
-            const oldestChatId = this.activeChats.keys().next().value;
-            if (oldestChatId) {
-              this.activeChats.delete(oldestChatId);
-              console.log(`Cleaned up oldest chat session to maintain limit: ${oldestChatId}`);
-            }
-          }
-          // --- End Cleanup --- 
-        }
-      } else {
-        // No input ID - start new chat with new ID
-        console.log("Starting new chat session...");
-        currentChatId = randomUUID();
-        chat = this.ai.chats.create({
-          model: this.modelName,
-          config: this.chatConfig,
-        });
-        this.activeChats.set(currentChatId, chat);
-        console.log(`New chat session created with ID: ${currentChatId}`);
-
-        // --- Simple In-Memory Cleanup --- 
-        if (this.activeChats.size > 20) {
-          // Get the first (oldest) key from the map iterator
-          const oldestChatId = this.activeChats.keys().next().value;
-          if (oldestChatId) {
-            this.activeChats.delete(oldestChatId);
-            console.log(`Cleaned up oldest chat session to maintain limit: ${oldestChatId}`);
-          }
-        }
-        // --- End Cleanup --- 
+      // Validate JWT when filePaths are provided
+      if (filePaths && filePaths.length > 0 && !jwt) {
+        throw new Error('JWT is required when file paths are provided');
       }
-    } catch (creationError) {
-      console.error(`Error finding or creating chat session:`, creationError);
-      // If we can't establish a chat, we must throw
-      throw new Error(`Failed to establish chat session: ${creationError}`);
-    }
 
-    // At this point, currentChatId is guaranteed to be a string, 
-    // and chat should be a valid Chat instance.
-    if (!chat) {
-      // Safety check, should not be reachable if create throws
-      throw new Error("Chat session is unexpectedly undefined after creation/retrieval.");
-    }
-
-    // --- Stage 2: Send Message using the Established Chat --- 
-    try {
-      // Send the message using the determined chat session
-      const stream = await chat.sendMessageStream({
-        message: prompt,
+      // Create a new chat instance with the provided history (if any)
+      const chat = this.ai.chats.create({
+        model: this.modelName,
+        config: this.chatConfig,
+        history: history || []
       });
 
-      // Return the stream and the guaranteed string chatId
-      return { stream, chatId: currentChatId };
 
-    } catch (sendError) {
-      // Now currentChatId is definitely a string here
-      console.error(`Error sending message in chat session ${currentChatId}:`, sendError);
-      // Optional: Consider removing the chat session if it errors persistently
-      // this.activeChats.delete(currentChatId);
-      throw sendError; // Re-throw the specific send error
+      let stream;
+      if (!filePaths || filePaths.length === 0) {
+        // Simple case: no files, just send the message as text
+        stream = await chat.sendMessageStream({
+          message: prompt
+        });
+      } else {
+        // Process files and add them to the message
+        console.log(`Processing files: ${filePaths.join(', ')}`);
+        
+        // Get file parts from Supabase service
+        const fileParts = await supabaseService.prepareFilePartsFromPaths(filePaths, jwt!);
+        
+        // Create message with text and file parts combined
+        // For the Google Genai SDK, message can be a string or array of parts
+        // When sending files, we need to use an array of parts with text and inlineData
+        const messageParts = [
+          { text: prompt },
+          ...fileParts
+        ];
+        
+        // Send message with the text and files
+        stream = await chat.sendMessageStream({
+          message: messageParts
+        });
+      }
+
+      return { stream, updatedHistory: chat.getHistory() };
+    } catch (error) {
+      console.error('Error sending message with history:', error);
+      throw error;
     }
-  }
-
-  // Optional: Method to clean up old/inactive chats if needed
-  cleanupInactiveChats(maxAgeInMs: number) {
-    const now = Date.now();
-    // This requires tracking the last activity time for each chat,
-    // which is not implemented here yet. You'd need to update
-    // the timestamp whenever sendMessageToChatStream is called for a chat.
-    console.warn("Chat cleanup function needs implementation (tracking last activity time).");
-    // Example logic:
-    // this.activeChats.forEach((chat, chatId) => {
-    //   if (now - chat.lastActivityTime > maxAgeInMs) {
-    //     this.activeChats.delete(chatId);
-    //     console.log(`Cleaned up inactive chat: ${chatId}`);
-    //   }
-    // });
   }
 }
 

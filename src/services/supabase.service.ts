@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import config from '../config/env';
 import { CreateDocumentDto, CreateDocumentAnnotationsDto, Document, DocumentAnnotations, Annotation } from '../dto/document.dto';
+import { ChatHistoryDto, Content } from '../dto/chat.dto';
 
 class SupabaseService {
   private supabase;
@@ -102,7 +103,7 @@ class SupabaseService {
       // Convert the blob to a base64 string
       const arrayBuffer = await data.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString('base64');
-      
+
       // Determine MIME type based on file extension
       const mimeType = this.getMimeType(filePath);
 
@@ -123,7 +124,7 @@ class SupabaseService {
    */
   private getMimeType(filePath: string): string {
     const extension = path.extname(filePath).toLowerCase();
-    
+
     switch (extension) {
       case '.pdf':
         return 'application/pdf';
@@ -155,7 +156,7 @@ class SupabaseService {
   async createDocument(documentData: CreateDocumentDto, jwt: string): Promise<Document | null> {
     try {
       const authClient = this.createAuthClient(jwt);
-      
+
       const { data, error } = await authClient
         .from('documents')
         .insert({
@@ -165,12 +166,12 @@ class SupabaseService {
         })
         .select()
         .single();
-      
+
       if (error) {
         console.error('Error creating document:', error);
         return null;
       }
-      
+
       return {
         id: data.id,
         userId: data.user_id,
@@ -194,7 +195,7 @@ class SupabaseService {
   async createDocumentAnnotations(annotationsData: CreateDocumentAnnotationsDto, jwt: string): Promise<DocumentAnnotations | null> {
     try {
       const authClient = this.createAuthClient(jwt);
-      
+
       const { data, error } = await authClient
         .from('document_annotations')
         .insert({
@@ -203,12 +204,12 @@ class SupabaseService {
         })
         .select()
         .single();
-      
+
       if (error) {
         console.error('Error creating document annotations:', error);
         return null;
       }
-      
+
       return {
         id: data.id,
         documentId: data.document_id,
@@ -230,17 +231,17 @@ class SupabaseService {
   async getDocumentsByUserId(userId: string, jwt: string): Promise<Document[]> {
     try {
       const authClient = this.createAuthClient(jwt);
-      
+
       const { data, error } = await authClient
         .from('documents')
         .select('*')
         .eq('user_id', userId);
-      
+
       if (error) {
         console.error('Error getting documents:', error);
         return [];
       }
-      
+
       return data.map(doc => ({
         id: doc.id,
         userId: doc.user_id,
@@ -264,18 +265,18 @@ class SupabaseService {
   async getDocumentAnnotations(documentId: string, jwt: string): Promise<DocumentAnnotations | null> {
     try {
       const authClient = this.createAuthClient(jwt);
-      
+
       const { data, error } = await authClient
         .from('document_annotations')
         .select('*')
         .eq('document_id', documentId)
         .single();
-      
+
       if (error) {
         console.error('Error getting document annotations:', error);
         return null;
       }
-      
+
       return {
         id: data.id,
         documentId: data.document_id,
@@ -298,18 +299,18 @@ class SupabaseService {
   async getDocumentsByPath(filePath: string, userId: string, jwt: string): Promise<Document[]> {
     try {
       const authClient = this.createAuthClient(jwt);
-      
+
       const { data, error } = await authClient
         .from('documents')
         .select('*')
         .eq('file_path', filePath)
         .eq('user_id', userId);
-      
+
       if (error) {
         console.error('Error getting documents by path:', error);
         return [];
       }
-      
+
       return data.map(doc => ({
         id: doc.id,
         userId: doc.user_id,
@@ -321,6 +322,184 @@ class SupabaseService {
     } catch (error) {
       console.error('Error getting documents by path:', error);
       return [];
+    }
+  }
+
+  /**
+   * Gets a chat history by ID
+   * @param chatId ID of the chat history
+   * @param jwt JWT token for user-specific access
+   * @returns Chat history or null
+   */
+  async getChatHistoryById(chatId: string, jwt: string): Promise<ChatHistoryDto | null> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('chat_history')
+        .select('*')
+        .eq('id', chatId)
+        .single();
+
+      if (error) {
+        console.error('Error getting chat history:', error);
+        return null;
+      }
+
+      return {
+        id: data.id,
+        userId: data.user_id,
+        history: data.history,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at)
+      };
+    } catch (error) {
+      console.error('Error getting chat history:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Creates a new chat history record in the database
+   * @param chatId Chat ID
+   * @param userId User ID
+   * @param history Initial chat history content
+   * @param jwt JWT token for user-specific access
+   * @returns Created chat history or null
+   */
+  async createChatHistory(chatId: string, userId: string, history: Content[], jwt: string): Promise<ChatHistoryDto | null> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('chat_history')
+        .insert({
+          id: chatId,
+          user_id: userId,
+          history: history
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating chat history:', error);
+        return null;
+      }
+
+      return {
+        id: data.id,
+        userId: data.user_id,
+        history: data.history,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at)
+      };
+    } catch (error) {
+      console.error('Error creating chat history:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Updates an existing chat history record in the database
+   * @param chatId Chat history ID
+   * @param history Updated chat history content
+   * @param jwt JWT token for user-specific access
+   * @returns Updated chat history or null
+   */
+  async updateChatHistory(chatId: string, history: Content[], jwt: string): Promise<ChatHistoryDto | null> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('chat_history')
+        .update({
+          history: history
+        })
+        .eq('id', chatId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating chat history:', error);
+        return null;
+      }
+
+      return {
+        id: data.id,
+        userId: data.user_id,
+        history: data.history,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at)
+      };
+    } catch (error) {
+      console.error('Error updating chat history:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Gets all chat histories for a user
+   * @param userId User ID
+   * @param jwt JWT token for user-specific access
+   * @returns Array of chat histories
+   */
+  async getChatHistoriesByUserId(userId: string, jwt: string): Promise<ChatHistoryDto[]> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('chat_history')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Error getting chat histories:', error);
+        return [];
+      }
+
+      return data.map((item: any) => ({
+        id: item.id,
+        userId: item.user_id,
+        history: item.history,
+        createdAt: new Date(item.created_at),
+        updatedAt: new Date(item.updated_at)
+      }));
+    } catch (error) {
+      console.error('Error getting chat histories:', error);
+      return [];
+    }
+  }
+
+  // Convert file paths to file data parts that can be sent to Gemini
+  async prepareFilePartsFromPaths(filePaths: string[], jwt: string): Promise<any[]> {
+    try {
+      if (!filePaths || filePaths.length === 0) {
+        return [];
+      }
+
+      const fileParts = [];
+      
+      // Process each file path
+      for (const filePath of filePaths) {
+        console.log(`Processing file: ${filePath}`);
+        
+        // Get file data from Supabase
+        const fileData = await this.getFileData(filePath, jwt);
+        
+        // Create a part with the inline data
+        fileParts.push({
+          inlineData: {
+            mimeType: fileData.mimeType,
+            data: fileData.data
+          }
+        });
+      }
+      
+      return fileParts;
+    } catch (error) {
+      console.error('Error preparing file parts:', error);
+      throw error;
     }
   }
 }

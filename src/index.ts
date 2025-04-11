@@ -1,7 +1,6 @@
 import express from 'express';
 import config from './config/env';
 import chatRoutes from './routes/routes';
-import documentRoutes from './routes/document.routes';
 import authenticateToken from './middleware/auth.middleware';
 import cors from 'cors';
 
@@ -22,7 +21,6 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/api', chatRoutes);
-app.use('/api/documents', documentRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
