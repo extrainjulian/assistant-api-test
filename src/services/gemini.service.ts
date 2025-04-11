@@ -47,6 +47,16 @@ class GeminiService {
     try {
       // Replace the placeholder in the prompt with the user's input
       const customizedPrompt = analysisPromptDeutsch.replace('{{userPrompt}}', prompt);
+
+      const localChatConfig: GenerateContentConfig = {
+        tools: [
+          {
+            googleSearch: {
+              type: 'google_search',
+            },
+          },
+        ],
+      };
       
       // Create content with the file included and user prompt
       const content = [
@@ -68,7 +78,7 @@ class GeminiService {
       const response = await this.ai.models.generateContent({
         model: this.modelName,
         contents: content,
-        config: this.chatConfig
+        config: localChatConfig
       });
 
       return response;
