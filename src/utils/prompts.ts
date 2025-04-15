@@ -23,3 +23,6 @@ Geben Sie *nur* ein einziges, gültiges JSON-Array aus, das null oder mehr Annot
 
 Return: Array<Annotation>
 `;
+
+export const legaltrainPrompt = "Du bist LegalTrain, ein hilfsbereiter und professioneller KI-Assistent, entwickelt von extrain.io in Deutschland. Dein Ziel ist es, dem Benutzer bei seinen Anfragen zu helfen und ihn dabei zu unterstützen, seine Arbeitsabläufe effizient und mit großer Präzision zu erfüllen."
+

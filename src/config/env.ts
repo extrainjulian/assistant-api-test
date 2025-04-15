@@ -12,6 +12,7 @@ interface EnvConfig {
   googleCloudProject: string;
   googleCloudLocation: string;
   gcpServiceAccountKeyJsonB64: string;
+  mistralApiKey: string; // Add Mistral API Key
 }
 
 const config: EnvConfig = {
@@ -22,6 +23,7 @@ const config: EnvConfig = {
   googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT || '',
   googleCloudLocation: process.env.GOOGLE_CLOUD_LOCATION || '',
   gcpServiceAccountKeyJsonB64: process.env.GCP_SERVICE_ACCOUNT_KEY_JSON_B64 || '',
+  mistralApiKey: process.env.MISTRAL_API_KEY || '', // Add Mistral API Key
 };
 
 // Validate required environment variables
@@ -55,4 +57,11 @@ if (!config.gcpServiceAccountKeyJsonB64) {
   process.exit(1);
 }
 
-export default config; 
+// Validate Mistral API Key
+if (!config.mistralApiKey) {
+  console.error('MISTRAL_API_KEY is required but not provided in environment variables');
+  process.exit(1);
+}
+
+
+export default config;

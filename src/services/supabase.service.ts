@@ -4,7 +4,8 @@ import path from 'path';
 import os from 'os';
 import config from '../config/env';
 import { CreateDocumentDto, CreateDocumentAnnotationsDto, Document, DocumentAnnotations, Annotation } from '../dto/document.dto';
-import { ChatHistoryDto, Content } from '../dto/chat.dto';
+import { ChatHistoryDto, Content, ChatSessionDto, MistralMessage } from '../dto/chat.dto';
+import { OCRResponse } from '../dto/ocr.dto';
 
 class SupabaseService {
   private supabase;
@@ -325,6 +326,160 @@ class SupabaseService {
     }
   }
 
+  // --- Chat Session Methods ---
+
+  /**
+   * Gets a chat session by ID
+   * @param sessionId ID of the chat session
+   * @param jwt JWT token for user-specific access
+   * @returns Chat session or null
+   */
+  async getChatSessionById(sessionId: string, jwt: string): Promise<ChatSessionDto | null> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('chat_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (error) {
+        // If error is 'PGRST116', it means no rows found, which is expected if the session doesn't exist.
+        if (error.code !== 'PGRST116') {
+          console.error('Error getting chat session:', error);
+        }
+        return null;
+      }
+
+      // Ensure messages and documents are arrays, even if null in DB
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      const documents = Array.isArray(data.documents) ? data.documents : [];
+
+
+      return {
+        id: data.id,
+        userId: data.user_id,
+        messages: messages,
+        documents: documents,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at)
+      };
+    } catch (error) {
+      console.error('Error getting chat session:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Creates a new chat session record in the database
+   * @param userId User ID
+   * @param userId User ID
+   * @param initialMessages Initial messages array
+   * @param initialDocuments Initial documents array
+   * @param jwt JWT token for user-specific access (used to create authenticated client)
+   * @returns Created chat session or null
+   */
+  async createChatSession(userId: string, initialMessages: MistralMessage[], initialDocuments: OCRResponse[], jwt: string): Promise<ChatSessionDto | null> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('chat_sessions')
+        .insert({
+          user_id: userId, // Use the passed userId parameter
+          messages: initialMessages,
+          documents: initialDocuments
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating chat session:', error);
+        return null;
+      }
+
+      // Ensure messages and documents are arrays after creation
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      const documents = Array.isArray(data.documents) ? data.documents : [];
+
+      return {
+        id: data.id,
+        userId: data.user_id,
+        messages: messages,
+        documents: documents,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at)
+      };
+    } catch (error) {
+      console.error('Error creating chat session:', error);
+      return null;
+    }
+  }
+
+   /**
+   * Updates an existing chat session record in the database (appends messages/documents)
+   * @param sessionId Chat session ID
+   * @param newMessages Messages to append
+   * @param newDocuments Documents to append
+   * @param jwt JWT token for user-specific access
+   * @returns Updated chat session or null
+   */
+   async updateChatSession(sessionId: string, newMessages: MistralMessage[], newDocuments: OCRResponse[], jwt: string): Promise<ChatSessionDto | null> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      // Fetch the current session to append data
+      const currentSession = await this.getChatSessionById(sessionId, jwt);
+      if (!currentSession) {
+        console.error(`Chat session with ID ${sessionId} not found for update.`);
+        return null;
+      }
+
+      // Ensure current messages/documents are arrays before spreading
+      const currentMessages = Array.isArray(currentSession.messages) ? currentSession.messages : [];
+      const currentDocuments = Array.isArray(currentSession.documents) ? currentSession.documents : [];
+
+      const updatedMessages = [...currentMessages, ...newMessages];
+      const updatedDocuments = [...currentDocuments, ...newDocuments];
+
+      const { data, error } = await authClient
+        .from('chat_sessions')
+        .update({
+          messages: updatedMessages,
+          documents: updatedDocuments
+          // updated_at is handled by the trigger
+        })
+        .eq('id', sessionId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating chat session:', error);
+        return null;
+      }
+
+      // Ensure messages and documents are arrays after update
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      const documents = Array.isArray(data.documents) ? data.documents : [];
+
+      return {
+        id: data.id,
+        userId: data.user_id,
+        messages: messages,
+        documents: documents,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at)
+      };
+    } catch (error) {
+      console.error('Error updating chat session:', error);
+      return null;
+    }
+  }
+
+
+  // --- Old Chat History Methods (Consider removing or refactoring if chat_sessions replaces this) ---
+
   /**
    * Gets a chat history by ID
    * @param chatId ID of the chat history
@@ -504,4 +659,4 @@ class SupabaseService {
   }
 }
 
-export default new SupabaseService(); 
+export default new SupabaseService();
