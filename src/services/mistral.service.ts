@@ -3,7 +3,7 @@ import config from '../config/env';
 import { EventStream } from '@mistralai/mistralai/lib/event-streams';
 import { CompletionEvent } from '@mistralai/mistralai/models/components/completionevent';
 import { MistralMessage } from '../dto/chat.dto'; // Import from DTO
-import { OCRResponse } from '../dto/ocr.dto';
+import { OCRResponse, OCRPageObject } from '../dto/ocr.dto'; // Import OCRPageObject
 import { Buffer } from 'buffer';
 
 class MistralService {
@@ -24,15 +24,51 @@ class MistralService {
      * Returns the stream and context needed for the controller to update the session.
      * @param userMessage The user's current message.
      * Sends prepared messages to the Mistral chat stream API.
-     * @param messages The array of messages (including system prompt, history, user message, OCR results).
+     * Optionally includes processed document context as system messages.
+     * @param messages The base array of messages (system prompt, history, user message).
+     * @param processedDocuments Optional array of OCR results to inject as context.
      * @returns The event stream from the Mistral API.
      */
-    async sendMessageStream(messages: MistralMessage[]): Promise<EventStream<CompletionEvent>> {
+    async sendMessageStream(
+        messages: MistralMessage[],
+        processedDocuments?: OCRResponse[] // Optional parameter
+    ): Promise<EventStream<CompletionEvent>> {
         try {
-            console.log(`Sending ${messages.length} messages to Mistral.`);
+            let finalMessages = [...messages]; // Start with a copy of the base messages
+
+            // Inject document context if provided
+            if (processedDocuments && processedDocuments.length > 0) {
+                console.log(`Injecting context from ${processedDocuments.length} document(s) into messages.`);
+                const documentContextMessages: MistralMessage[] = [];
+                processedDocuments.forEach(doc => {
+                    // Use optional chaining for fileName as it might not always be present if the DTO is used elsewhere
+                    const docName = doc.fileName ?? 'Unknown Document';
+                    if (doc.pages && doc.pages.length > 0) {
+                        const combinedText = doc.pages.map((p: OCRPageObject) => p.markdown).join('\n\n'); // Use OCRPageObject
+                        // Add a system message for each document's content
+                        documentContextMessages.push({
+                            role: 'user',
+                            content: `--- Document Context: ${docName} ---\n${combinedText}\n--- End Document Context: ${docName} ---` // Use docName
+                        });
+                    }
+                });
+
+                // Insert document context messages before the last user message
+                if (finalMessages.length > 0 && finalMessages[finalMessages.length - 1].role === 'user') {
+                    finalMessages.splice(finalMessages.length - 1, 0, ...documentContextMessages);
+                } else {
+                    // Fallback: Append if no user message found at the end (shouldn't happen in normal flow)
+                    finalMessages.push(...documentContextMessages);
+                }
+            }
+
+            console.log(`Sending ${finalMessages.length} messages to Mistral.`);
+            // Log the final message structure for debugging (optional, can be verbose)
+            // console.log("Final messages:", JSON.stringify(finalMessages, null, 2));
+
             const chatStreamResponse = await this.client.chat.stream({
                 model: this.modelName,
-                messages: messages,
+                messages: finalMessages, // Use the potentially modified message array
             });
             console.log('Received stream response from Mistral.');
             return chatStreamResponse;
@@ -64,6 +100,10 @@ class MistralService {
             });
             console.log(`OCR processing successful for file ${fileName}.`);
 
+            // Add fileName to the response object as it's useful later
+            const responseWithFilename = { ...ocrResponse, fileName: fileName } as OCRResponse;
+
+
             // Consider deleting the file after processing
             try {
                  await this.client.files.delete({ fileId: uploadedPdf.id });
@@ -73,7 +113,7 @@ class MistralService {
             }
 
             // Cast the response to OCRResponse - ensure the actual response structure matches
-            return ocrResponse as OCRResponse;
+            return responseWithFilename; // Return the augmented response
         } catch (error) {
             console.error(`Error processing OCR for file ${fileName}:`, error);
             throw error;

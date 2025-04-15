@@ -84,4 +84,8 @@ export type OCRResponse = {
    */
   model: string;
   usageInfo: OCRUsageInfo;
+  /**
+   * Optional: The original filename, added during processing.
+   */
+  fileName?: string;
 };

@@ -42,17 +42,19 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
         }
 
         let historyMessages: MistralMessage[] = [];
-        let processedDocuments: OCRResponse[] = []; // Store newly processed documents for saving
+        let existingDocuments: OCRResponse[] = []; // Store documents from the existing session
+        let newlyProcessedDocuments: OCRResponse[] = []; // Store ONLY newly processed documents for saving
         let isNewSession = false;
 
-        // 1. Determine/Establish Definitive Session ID & Fetch History
+        // 1. Determine/Establish Definitive Session ID & Fetch History/Documents
         if (currentSessionIdFromRequest) {
             console.log(`Checking existing session ID: ${currentSessionIdFromRequest}`);
             const session = await supabaseService.getChatSessionById(currentSessionIdFromRequest, jwt);
             if (session) {
                 finalSessionId = session.id; // Use the confirmed ID from DB
                 historyMessages = Array.isArray(session.messages) ? session.messages : [];
-                console.log(`Using existing session ${finalSessionId}. Found ${historyMessages.length} messages.`);
+                existingDocuments = Array.isArray(session.documents) ? session.documents : []; // Load existing documents
+                console.log(`Using existing session ${finalSessionId}. Found ${historyMessages.length} messages and ${existingDocuments.length} documents.`);
             } else {
                 console.warn(`Chat session ${currentSessionIdFromRequest} not found or user unauthorized. Creating a new session.`);
                 isNewSession = true;
@@ -80,7 +82,6 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
         console.log(`Set response header X-Chat-Id: ${finalSessionId}`);
 
         // 3. Process New Files if filePaths are provided (same logic as before)
-        const documentContentForPrompt: string[] = [];
         if (filePaths && filePaths.length > 0) {
             console.log(`Processing ${filePaths.length} new file(s) for session ${finalSessionId}...`);
             for (const filePath of filePaths) {
@@ -91,11 +92,7 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
                     const fileContent = fs.readFileSync(tempFilePath);
                     const fileName = path.basename(filePath);
                     const ocrResult = await mistralService.processDocumentOcr(fileContent, fileName, false);
-                    processedDocuments.push(ocrResult);
-                    if (ocrResult.pages && ocrResult.pages.length > 0) {
-                        const combinedText = ocrResult.pages.map(p => p.markdown).join('\n\n');
-                        documentContentForPrompt.push(`--- Document: ${fileName} ---\n${combinedText}\n--- End Document: ${fileName} ---`);
-                    }
+                    newlyProcessedDocuments.push(ocrResult); // Use newlyProcessedDocuments
                     console.log(`Successfully processed OCR for ${fileName}`);
                 } catch (fileError) {
                     console.error(`Error processing file ${filePath}:`, fileError);
@@ -105,27 +102,28 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
                     }
                 }
             }
-            console.log(`Finished processing ${processedDocuments.length} file(s).`);
+            console.log(`Finished processing ${newlyProcessedDocuments.length} new file(s).`); // Use newlyProcessedDocuments
         }
 
-        // 4. Construct the final user prompt (same logic as before)
-        const finalUserPrompt = documentContentForPrompt.length > 0
-            ? `${documentContentForPrompt.join('\n\n')}\n\nUser Query: ${prompt}`
-            : prompt;
+        // 4. Combine existing and new documents for context
+        const allDocumentsForContext = [...existingDocuments, ...newlyProcessedDocuments];
 
-        // 5. Prepare messages for Mistral API (same logic as before)
+        // 5. Prepare messages for Mistral API (Document context handled by service)
         const messagesToMistral: MistralMessage[] = [
             { role: 'system', content: legaltrainPrompt },
             ...historyMessages,
-            { role: 'user', content: finalUserPrompt }
+            { role: 'user', content: prompt } // Use the original prompt here
         ];
 
         // Setup response headers for streaming (Content-Type, Transfer-Encoding)
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.setHeader('Transfer-Encoding', 'chunked');
 
-        // 6. Call the simplified Mistral service
-        const stream = await mistralService.sendMessageStream(messagesToMistral);
+        // 6. Call the Mistral service, passing combined documents for context
+        const stream = await mistralService.sendMessageStream(
+            messagesToMistral,
+            allDocumentsForContext // Pass the combined list for context
+        );
 
         // 7. Stream the response back to the client
         for await (const chunk of stream) {
@@ -138,10 +136,11 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
 
         res.end(); // End the HTTP response stream
 
-        // 8. Persist Final Session Update (Messages and Documents)
+        // 7. Persist Final Session Update (Messages and Documents)
         // The session (ID: finalSessionId) is guaranteed to exist at this point.
         try {
-            const newUserMessage: MistralMessage = { role: 'user', content: finalUserPrompt };
+            // Save the ORIGINAL user prompt, not the one potentially modified with context
+            const newUserMessage: MistralMessage = { role: 'user', content: prompt };
             const newAssistantMessage: MistralMessage = { role: 'assistant', content: assistantResponseContent };
 
             console.log(`Updating session ${finalSessionId} with new messages and documents...`);
@@ -151,10 +150,10 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
             await supabaseService.updateChatSession(
                 finalSessionId,
                 [newUserMessage, newAssistantMessage], // Append the latest exchange
-                processedDocuments, // Append any newly processed documents
+                newlyProcessedDocuments, // Append ONLY newly processed documents
                 jwt
             );
-            console.log(`Session ${finalSessionId} updated successfully with final content.`);
+            console.log(`Session ${finalSessionId} updated successfully with final content (appended ${newlyProcessedDocuments.length} new documents).`);
 
         } catch (dbError) {
             console.error(`Error persisting final update to chat session ${finalSessionId}:`, dbError);
