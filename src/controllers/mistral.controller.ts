@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
 import mistralService from '../services/mistral.service';
 import supabaseService from '../services/supabase.service';
 import { ChatRequestDto, MistralMessage, ChatSessionDto } from '../dto/chat.dto'; // Import ChatSessionDto
@@ -78,6 +77,7 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
         }
 
         // 2. Set Header with Definitive Session ID
+        res.setHeader('Access-Control-Expose-Headers', 'X-Chat-Id');
         res.setHeader('X-Chat-Id', finalSessionId);
         console.log(`Set response header X-Chat-Id: ${finalSessionId}`);
 
