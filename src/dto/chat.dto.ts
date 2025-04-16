@@ -80,9 +80,30 @@ export interface ChatHistoryDto {
  */
 export interface MistralMessage {
   role: 'user' | 'assistant' | 'system'; // System role might be useful for initial prompts
-  content: string;
+  content: string | ContentChunk[]; // String for text-only or ContentChunk array for multimodal
   // Potentially add other fields if needed, like timestamps per message
 }
+
+/**
+ * Text content chunk for multimodal messages
+ */
+export interface TextChunk {
+  type: 'text';
+  text: string;
+}
+
+/**
+ * Image content chunk for multimodal messages
+ */
+export interface ImageURLChunk {
+  type: 'image_url';
+  imageUrl: string;
+}
+
+/**
+ * Union type for all content chunk types
+ */
+export type ContentChunk = TextChunk | ImageURLChunk;
 
 /**
  * Data Transfer Object for chat sessions stored in Supabase.

@@ -2,13 +2,20 @@ import { Mistral } from '@mistralai/mistralai';
 import config from '../config/env';
 import { EventStream } from '@mistralai/mistralai/lib/event-streams';
 import { CompletionEvent } from '@mistralai/mistralai/models/components/completionevent';
-import { MistralMessage } from '../dto/chat.dto'; // Import from DTO
-import { OCRResponse, OCRPageObject } from '../dto/ocr.dto'; // Import OCRPageObject
+import { ContentChunk } from '@mistralai/mistralai/models/components/contentchunk';
+import { TextChunk } from '@mistralai/mistralai/models/components/textchunk';
+import { ImageURLChunk } from '@mistralai/mistralai/models/components/imageurlchunk';
+import { UserMessage } from '@mistralai/mistralai/models/components/usermessage';
+import { SystemMessage } from '@mistralai/mistralai/models/components/systemmessage';
+import { AssistantMessage } from '@mistralai/mistralai/models/components/assistantmessage';
+import { ChatCompletionStreamRequestMessages } from '@mistralai/mistralai/models/components/chatcompletionstreamrequest';
+import { MistralMessage } from '../dto/chat.dto';
+import { OCRResponse, OCRPageObject } from '../dto/ocr.dto';
 import { Buffer } from 'buffer';
 
 class MistralService {
     private client: Mistral;
-    private modelName: string = 'mistral-large-latest';
+    private modelName: string = 'pixtral-large-latest';
 
     constructor() {
         if (!config.mistralApiKey) {
@@ -31,45 +38,141 @@ class MistralService {
      */
     async sendMessageStream(
         messages: MistralMessage[],
-        processedDocuments?: OCRResponse[] // Optional parameter
+        processedDocuments?: OCRResponse[]
     ): Promise<EventStream<CompletionEvent>> {
         try {
-            let finalMessages = [...messages]; // Start with a copy of the base messages
+            // Convert our messages to SDK-compatible format
+            const sdkMessages: ChatCompletionStreamRequestMessages[] = messages.map(msg => {
+                if (typeof msg.content === 'string') {
+                    // For string content
+                    if (msg.role === 'system') {
+                        return {
+                            role: 'system',
+                            content: msg.content
+                        } as SystemMessage & { role: 'system' };
+                    } else if (msg.role === 'assistant') {
+                        return {
+                            role: 'assistant',
+                            content: msg.content
+                        } as AssistantMessage & { role: 'assistant' };
+                    } else {
+                        return {
+                            role: 'user',
+                            content: msg.content
+                        } as UserMessage & { role: 'user' };
+                    }
+                } else {
+                    // For multimodal content
+                    // Convert our ContentChunk[] to SDK's ContentChunk[]
+                    const sdkContent: ContentChunk[] = msg.content.map(chunk => {
+                        if (chunk.type === 'text') {
+                            return {
+                                type: 'text',
+                                text: chunk.text
+                            } as TextChunk & { type: 'text' };
+                        } else {
+                            return {
+                                type: 'image_url',
+                                imageUrl: chunk.imageUrl
+                            } as ImageURLChunk & { type: 'image_url' };
+                        }
+                    });
 
+                    if (msg.role === 'user') {
+                        return {
+                            role: 'user',
+                            content: sdkContent
+                        } as UserMessage & { role: 'user' };
+                    } else if (msg.role === 'assistant') {
+                        return {
+                            role: 'assistant',
+                            content: sdkContent
+                        } as AssistantMessage & { role: 'assistant' };
+                    } else {
+                        return {
+                            role: 'system',
+                            content: sdkContent
+                        } as SystemMessage & { role: 'system' };
+                    }
+                }
+            });
+            
             // Inject document context if provided
             if (processedDocuments && processedDocuments.length > 0) {
                 console.log(`Injecting context from ${processedDocuments.length} document(s) into messages.`);
-                const documentContextMessages: MistralMessage[] = [];
+                const documentContextMessages: (UserMessage & { role: 'user' })[] = [];
+                
                 processedDocuments.forEach(doc => {
-                    // Use optional chaining for fileName as it might not always be present if the DTO is used elsewhere
                     const docName = doc.fileName ?? 'Unknown Document';
+                    
                     if (doc.pages && doc.pages.length > 0) {
-                        const combinedText = doc.pages.map((p: OCRPageObject) => p.markdown).join('\n\n'); // Use OCRPageObject
-                        // Add a system message for each document's content
+                        // Create multimodal content with both text and images
+                        const multimodalContent: ContentChunk[] = [];
+                        
+                        // Add document header as text
+                        multimodalContent.push({
+                            type: 'text',
+                            text: `--- Document Context: ${docName} ---`
+                        } as TextChunk & { type: 'text' });
+                        
+                        // Process each page
+                        doc.pages.forEach((page: OCRPageObject) => {
+                            // Add page text
+                            multimodalContent.push({
+                                type: 'text',
+                                text: page.markdown
+                            } as TextChunk & { type: 'text' });
+                            
+                            // Add page images if available
+                            if (page.images && page.images.length > 0) {
+                                page.images.forEach(image => {
+                                    if (image.imageBase64) {
+                                        multimodalContent.push({
+                                            type: 'image_url',
+                                            imageUrl: image.imageBase64.startsWith('data:') 
+                                                ? image.imageBase64 
+                                                : `data:image/jpeg;base64,${image.imageBase64}`
+                                        } as ImageURLChunk & { type: 'image_url' });
+                                    }
+                                });
+                            }
+                        });
+                        
+                        // Add document footer as text
+                        multimodalContent.push({
+                            type: 'text',
+                            text: `--- End Document Context: ${docName} ---`
+                        } as TextChunk & { type: 'text' });
+                        
+                        // Create user message with multimodal content
                         documentContextMessages.push({
                             role: 'user',
-                            content: `--- Document Context: ${docName} ---\n${combinedText}\n--- End Document Context: ${docName} ---` // Use docName
-                        });
+                            content: multimodalContent
+                        } as UserMessage & { role: 'user' });
                     }
                 });
 
-                // Insert document context messages before the last user message
-                if (finalMessages.length > 0 && finalMessages[finalMessages.length - 1].role === 'user') {
-                    finalMessages.splice(finalMessages.length - 1, 0, ...documentContextMessages);
+                // Find the position to insert - before the last user message
+                const lastUserIndex = sdkMessages.findIndex(
+                    (msg, i) => msg.role === 'user' && i === sdkMessages.length - 1
+                );
+                
+                if (lastUserIndex !== -1) {
+                    // Insert before the last user message
+                    sdkMessages.splice(lastUserIndex, 0, ...documentContextMessages);
                 } else {
-                    // Fallback: Append if no user message found at the end (shouldn't happen in normal flow)
-                    finalMessages.push(...documentContextMessages);
+                    // Fallback: Append at the end
+                    sdkMessages.push(...documentContextMessages);
                 }
             }
 
-            console.log(`Sending ${finalMessages.length} messages to Mistral.`);
-            // Log the final message structure for debugging (optional, can be verbose)
-            // console.log("Final messages:", JSON.stringify(finalMessages, null, 2));
-
+            console.log(`Sending ${sdkMessages.length} messages to Mistral.`);
+            
             const chatStreamResponse = await this.client.chat.stream({
                 model: this.modelName,
-                messages: finalMessages, // Use the potentially modified message array
+                messages: sdkMessages,
             });
+            
             console.log('Received stream response from Mistral.');
             return chatStreamResponse;
         } catch (error) {

@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import mistralService from '../services/mistral.service';
 import supabaseService from '../services/supabase.service';
-import { ChatRequestDto, MistralMessage, ChatSessionDto } from '../dto/chat.dto'; // Import ChatSessionDto
+import { ChatRequestDto, MistralMessage } from '../dto/chat.dto'; // Import ChatSessionDto
 import { OcrRequestDto, OCRResponse } from '../dto/ocr.dto';
 import { legaltrainPrompt } from '../utils/prompts'; // Import the system prompt
 
@@ -91,7 +91,7 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
                     tempFilePath = await supabaseService.downloadFile(filePath, jwt);
                     const fileContent = fs.readFileSync(tempFilePath);
                     const fileName = path.basename(filePath);
-                    const ocrResult = await mistralService.processDocumentOcr(fileContent, fileName, false);
+                    const ocrResult = await mistralService.processDocumentOcr(fileContent, fileName, true);
                     newlyProcessedDocuments.push(ocrResult); // Use newlyProcessedDocuments
                     console.log(`Successfully processed OCR for ${fileName}`);
                 } catch (fileError) {
