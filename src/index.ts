@@ -1,7 +1,7 @@
 import express from 'express';
 import config from './config/env';
 import chatRoutes from './routes/routes';
-import authenticateToken from './middleware/auth.middleware';
+import { authenticateToken } from './middleware/auth.middleware';
 import cors from 'cors';
 
 const app = express();

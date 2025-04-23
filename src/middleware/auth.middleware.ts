@@ -17,7 +17,7 @@ declare global {
     }
 }
 
-const authenticateToken = (
+export const authenticateToken = (
     req: Request,
     res: Response,
     next: NextFunction
@@ -60,5 +60,3 @@ const authenticateToken = (
         return;
     }
 };
-
-export default authenticateToken; 

@@ -6,6 +6,7 @@ import config from '../config/env';
 import { CreateDocumentDto, CreateDocumentAnnotationsDto, Document, DocumentAnnotations, Annotation } from '../dto/document.dto';
 import { ChatHistoryDto, Content, ChatSessionDto, MistralMessage } from '../dto/chat.dto';
 import { OCRResponse } from '../dto/ocr.dto';
+import { DocumentAnalysisResult } from '../dto/analyze.dto';
 
 class SupabaseService {
   private supabase;
@@ -655,6 +656,90 @@ class SupabaseService {
     } catch (error) {
       console.error('Error preparing file parts:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Creates a document analysis record in the database
+   * @param chatId Chat session ID
+   * @param userId User ID
+   * @param prompt Prompt used for analysis
+   * @param analysis Analysis result object
+   * @param jwt JWT token for user-specific access
+   * @returns Created document analysis or null
+   */
+  async createDocumentAnalysis(
+    chatId: string, 
+    userId: string, 
+    prompt: string, 
+    analysis: any, 
+    jwt: string
+  ): Promise<DocumentAnalysisResult | null> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('document_analysis')
+        .insert({
+          chat_id: chatId,
+          user_id: userId,
+          prompt: prompt,
+          analysis: analysis
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating document analysis:', error);
+        return null;
+      }
+
+      return {
+        id: data.id,
+        chatId: data.chat_id,
+        userId: data.user_id,
+        prompt: data.prompt,
+        analysis: data.analysis,
+        createdAt: new Date(data.created_at)
+      };
+    } catch (error) {
+      console.error('Error creating document analysis:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Gets document analysis records for a chat session
+   * @param chatId Chat session ID
+   * @param jwt JWT token for user-specific access
+   * @returns Array of document analysis records
+   */
+  async getDocumentAnalysisByChatId(chatId: string, jwt: string): Promise<DocumentAnalysisResult[]> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('document_analysis')
+        .select('*')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error getting document analysis:', error);
+        return [];
+      }
+
+      return data.map((item: any) => ({
+        id: item.id,
+        chatId: item.chat_id,
+        userId: item.user_id,
+        prompt: item.prompt,
+        analysis: item.analysis,
+        createdAt: new Date(item.created_at)
+      }));
+    } catch (error) {
+      console.error('Error getting document analysis:', error);
+      return [];
     }
   }
 }
