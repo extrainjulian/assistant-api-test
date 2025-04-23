@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer'; // Need this to transform plain object to class instance
 import { OcrRequestDto } from '../dto/ocr.dto'; // Import the DTO
+import { ChatAnalyzeRequestDto } from '../dto/analyze.dto'; // Import the DTO
 
 /**
  * Middleware to validate document analysis requests
@@ -90,6 +91,29 @@ export const validateAssistantRequest = (req: Request, res: Response, next: Next
         return;
       }
     }
+  }
+  
+  // Valid request, proceed
+  next();
+};
+
+/**
+ * Middleware to validate chat document analysis requests
+ */
+export const validateChatAnalyzeRequest = (req: Request, res: Response, next: NextFunction): void => {
+  const { prompt } = req.body;
+  
+  // Prompt is optional, but must be a string if provided
+  if (prompt !== undefined && typeof prompt !== 'string') {
+    res.status(400).json({ error: 'Prompt must be a string if provided' });
+    return;
+  }
+  
+  // Check if chatId exists in path parameters
+  const chatId = req.params.chatId;
+  if (!chatId) {
+    res.status(400).json({ error: 'Chat ID is required as a path parameter' });
+    return;
   }
   
   // Valid request, proceed
