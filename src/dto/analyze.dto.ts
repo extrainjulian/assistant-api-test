@@ -48,22 +48,14 @@ export interface DocumentAnalysisResult {
   prompt: string;
   
   /**
-   * Structured analysis result
+   * Structured analysis result as an array of annotations
+   * with level, description, and optional metadata
    */
-  analysis: {
-    info: Array<{
-      description: string;
-      metadata?: string;
-    }>;
-    warning: Array<{
-      description: string;
-      metadata?: string;
-    }>;
-    error: Array<{
-      description: string;
-      metadata?: string;
-    }>;
-  };
+  analysis: Array<{
+    level: 'info' | 'warning' | 'error';
+    description: string;
+    metadata?: string;
+  }>;
   
   /**
    * Timestamp when analysis was created
