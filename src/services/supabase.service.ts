@@ -742,6 +742,39 @@ class SupabaseService {
       return [];
     }
   }
+
+  /**
+   * Tracks token usage for a user
+   * @param userId User ID
+   * @param usageType Type of usage ('chat' or 'analysis')
+   * @param tokenCount Number of tokens used
+   * @param jwt JWT token for user-specific access
+   * @returns Success status
+   */
+  async trackUserUsage(userId: string, usageType: 'chat' | 'analysis', tokenCount: number, jwt: string): Promise<boolean> {
+    try {
+      console.log(`[SUPABASE] Tracking ${tokenCount} tokens for ${usageType} by user ${userId}`);
+      const authClient = this.createAuthClient(jwt);
+
+      const { error } = await authClient
+        .from('user_usage')
+        .insert({
+          user_id: userId,
+          usage_type: usageType,
+          token_count: tokenCount
+        });
+
+      if (error) {
+        console.error(`[SUPABASE] Error tracking user usage:`, error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error(`[SUPABASE] Error tracking user usage:`, error);
+      return false;
+    }
+  }
 }
 
 export default new SupabaseService();

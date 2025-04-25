@@ -8,6 +8,7 @@ import { OcrRequestDto, OCRResponse } from '../dto/ocr.dto';
 import { ChatAnalyzeRequestDto } from '../dto/analyze.dto';
 import { legaltrainPrompt, documentAnalysisPrompt } from '../utils/prompts'; // Import the system prompts
 import { AnalysisResult } from '../utils/types';
+import { UsageInfo } from '@mistralai/mistralai/models/components/usageinfo';
 
 /**
  * Stream a chat session with Mistral AI, handling history and document processing.
@@ -20,6 +21,7 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
     let currentSessionIdFromRequest: string | undefined = req.body.chatId;
     const { prompt, filePaths } = req.body;
     let finalSessionId: string; // This will hold the definitive DB session ID
+    let tokenUsage: UsageInfo | undefined;
 
     try {
         console.log(`[CONTROLLER] Starting chat stream request ${currentSessionIdFromRequest ? `for session ${currentSessionIdFromRequest}` : '(new session)'}`);
@@ -136,6 +138,11 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
 
         // 7. Stream the response back to the client
         for await (const chunk of stream) {
+            // Check for token usage in the chunk and update our variable
+            if (chunk?.data?.usage) {
+                tokenUsage = chunk.data.usage;
+            }
+            
             if (chunk?.data?.choices?.[0]?.delta?.content) {
                 const content = chunk.data.choices[0].delta.content;
                 res.write(content);
@@ -145,6 +152,17 @@ export const streamMistralChat = async (req: Request<{}, {}, ChatRequestDto>, re
 
         res.end(); // End the HTTP response stream
         console.log(`[CONTROLLER] Chat stream completed successfully`);
+
+        // Track usage in the database if we have token information
+        if (tokenUsage) {
+            await supabaseService.trackUserUsage(
+                userId,
+                'chat',
+                tokenUsage.totalTokens,
+                jwt
+            );
+            console.log(`[CONTROLLER] Tracked usage of ${tokenUsage.totalTokens} tokens for chat`);
+        }
 
         // 8. Persist Final Session Update (Messages and Documents)
         // The session (ID: finalSessionId) is guaranteed to exist at this point.
@@ -291,13 +309,27 @@ export const analyzeChatDocuments = async (req: Request<{ chatId: string }, {}, 
             { role: 'user', content: userContent } // Put the user's additional instructions in the user message
         ];
 
-        // Get the analysis result as an array of Annotation objects
+        // Get the analysis result and usage information
         let analysisResult: AnalysisResult;
+        let tokenUsage: UsageInfo | undefined;
         
         try {
             // Use the JSON structured response method
-            analysisResult = await mistralService.getStructuredJsonResponse(messagesToMistral, chatSession.documents);
+            const response = await mistralService.getStructuredJsonResponse(messagesToMistral, chatSession.documents);
+            analysisResult = response.result;
+            tokenUsage = response.usage;
             console.log(`[CONTROLLER] Successfully received analysis result`);
+            
+            // Track usage if available
+            if (tokenUsage) {
+                await supabaseService.trackUserUsage(
+                    userId,
+                    'analysis',
+                    tokenUsage.totalTokens,
+                    jwt
+                );
+                console.log(`[CONTROLLER] Tracked usage of ${tokenUsage.totalTokens} tokens for analysis`);
+            }
         } catch (error) {
             console.error(`[CONTROLLER] Error getting structured response:`, error);
             // Default to empty array if there's an error
@@ -325,7 +357,8 @@ export const analyzeChatDocuments = async (req: Request<{ chatId: string }, {}, 
             chatId,
             timestamp: new Date().toISOString(),
             analysis: analysisResult,
-            recordId: analysisRecord?.id || null
+            recordId: analysisRecord?.id || null,
+            tokenUsage: tokenUsage // Include token usage in response
         });
 
     } catch (error) {

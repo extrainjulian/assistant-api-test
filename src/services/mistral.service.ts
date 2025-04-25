@@ -13,6 +13,7 @@ import { MistralMessage } from '../dto/chat.dto';
 import { OCRResponse, OCRPageObject } from '../dto/ocr.dto';
 import { Buffer } from 'buffer';
 import { AnalysisResult } from '../utils/types';
+import { UsageInfo } from '@mistralai/mistralai/models/components/usageinfo';
 
 class MistralService {
     private client: Mistral;
@@ -227,12 +228,12 @@ class MistralService {
      * Sends messages to Mistral API with JSON response format
      * @param messages Array of messages to send to the API
      * @param processedDocuments Optional array of documents for context
-     * @returns Structured JSON response
+     * @returns Structured JSON response and usage information
      */
     async getStructuredJsonResponse(
         messages: MistralMessage[],
         processedDocuments?: OCRResponse[]
-    ): Promise<AnalysisResult> {
+    ): Promise<{ result: AnalysisResult, usage?: UsageInfo }> {
         try {
             console.log(`[MISTRAL] Starting structured JSON request with ${messages.length} messages and ${processedDocuments?.length || 0} documents`);
             
@@ -259,7 +260,16 @@ class MistralService {
                     if (typeof content === 'string') {
                         const jsonContent = JSON.parse(content) as AnalysisResult;
                         console.log(`[MISTRAL] Successfully received and parsed JSON response`);
-                        return jsonContent;
+                        
+                        if (chatResponse.usage) {
+                            console.log(`[MISTRAL] Token usage for analysis: ${JSON.stringify(chatResponse.usage)}`);
+                        }
+                        
+                        // Return both the result and usage data
+                        return { 
+                            result: jsonContent,
+                            usage: chatResponse.usage 
+                        };
                     } else {
                         console.error(`[MISTRAL] Error: Response content is not a string`);
                         throw new Error('Mistral response content is not a string and cannot be parsed as JSON');
