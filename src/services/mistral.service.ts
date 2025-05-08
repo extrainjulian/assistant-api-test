@@ -17,7 +17,7 @@ import { UsageInfo } from '@mistralai/mistralai/models/components/usageinfo';
 
 class MistralService {
     private client: Mistral;
-    private modelName: string = 'pixtral-large-latest';
+    private modelName: string = 'mistral-medium-latest';
 
     constructor() {
         if (!config.mistralApiKey) {
