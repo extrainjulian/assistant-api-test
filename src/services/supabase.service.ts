@@ -478,6 +478,83 @@ class SupabaseService {
     }
   }
 
+  /**
+   * Updates only the documents of an existing chat session record in the database
+   * @param sessionId Chat session ID
+   * @param documents Documents to set
+   * @param jwt JWT token for user-specific access
+   * @returns Updated chat session or null
+   */
+  async updateChatSessionDocuments(sessionId: string, documents: OCRResponse[], jwt: string): Promise<ChatSessionDto | null> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      // Fetch the current session
+      const currentSession = await this.getChatSessionById(sessionId, jwt);
+      if (!currentSession) {
+        console.error(`Chat session with ID ${sessionId} not found for document update.`);
+        return null;
+      }
+
+      const { data, error } = await authClient
+        .from('chat_sessions')
+        .update({
+          documents: documents
+          // updated_at is handled by the trigger
+        })
+        .eq('id', sessionId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating chat session documents:', error);
+        return null;
+      }
+
+      // Ensure messages and documents are arrays after update
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      const updatedDocuments = Array.isArray(data.documents) ? data.documents : [];
+
+      return {
+        id: data.id,
+        userId: data.user_id,
+        messages: messages,
+        documents: updatedDocuments,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at)
+      };
+    } catch (error) {
+      console.error('Error updating chat session documents:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Gets document records associated with a chat session
+   * @param chatId Chat session ID
+   * @param jwt JWT token for user-specific access
+   * @returns Array of document records
+   */
+  async getChatDocumentsBySessionId(chatId: string, jwt: string): Promise<any[]> {
+    try {
+      const authClient = this.createAuthClient(jwt);
+
+      const { data, error } = await authClient
+        .from('chat_documents')
+        .select('*')
+        .eq('chat_id', chatId);
+
+      if (error) {
+        console.error('Error getting chat documents:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error getting chat documents:', error);
+      return [];
+    }
+  }
 
   // --- Old Chat History Methods (Consider removing or refactoring if chat_sessions replaces this) ---
 

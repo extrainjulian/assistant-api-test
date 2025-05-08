@@ -290,14 +290,67 @@ export const analyzeChatDocuments = async (req: Request<{ chatId: string }, {}, 
             return;
         }
 
-        // Check if there are documents to analyze
-        if (!chatSession.documents || chatSession.documents.length === 0) {
-            console.log(`[CONTROLLER] No documents available in chat ${chatId}`);
-            res.status(400).json({ error: 'No documents available for analysis in this chat session' });
+        // Initialize documents array
+        let documentsList: OCRResponse[] = [];
+        
+        // Check if there are documents in the session
+        if (chatSession.documents && chatSession.documents.length > 0) {
+            documentsList = chatSession.documents;
+            console.log(`[CONTROLLER] Found ${documentsList.length} documents in chat session ${chatId}`);
+        } else {
+            // If no documents in session, check for files in chat_documents table
+            console.log(`[CONTROLLER] No documents in chat session, checking chat_documents table`);
+            const chatDocuments = await supabaseService.getChatDocumentsBySessionId(chatId, jwt);
+            
+            if (!chatDocuments || chatDocuments.length === 0) {
+                console.log(`[CONTROLLER] No documents found in chat_documents for chat ${chatId}`);
+                res.status(400).json({ error: 'No documents available for analysis in this chat session' });
+                return;
+            }
+            
+            console.log(`[CONTROLLER] Found ${chatDocuments.length} document records in chat_documents table`);
+            
+            // Process each document with OCR similar to the chat endpoint
+            for (const document of chatDocuments) {
+                let tempFilePath: string | null = null;
+                try {
+                    tempFilePath = await supabaseService.downloadFile(document.file_path, jwt);
+                    const fileContent = fs.readFileSync(tempFilePath);
+                    const fileName = path.basename(document.file_path);
+                    const ocrResult = await mistralService.processDocumentOcr(fileContent, fileName, true);
+                    documentsList.push(ocrResult);
+                } catch (fileError) {
+                    console.error(`[CONTROLLER] Error processing file ${document.file_path}:`, fileError);
+                } finally {
+                    if (tempFilePath) {
+                        try { 
+                            fs.unlinkSync(tempFilePath);
+                        } catch (e) { 
+                            console.error(`[CONTROLLER] Error cleaning temp file ${tempFilePath}:`, e);
+                        }
+                    }
+                }
+            }
+            
+            // Update the session with the newly processed documents
+            if (documentsList.length > 0) {
+                await supabaseService.updateChatSessionDocuments(
+                    chatId,
+                    documentsList,
+                    jwt
+                );
+                console.log(`[CONTROLLER] Updated chat session with ${documentsList.length} processed documents`);
+            }
+        }
+
+        // Check if we have any documents to analyze after all checks and processing
+        if (documentsList.length === 0) {
+            console.log(`[CONTROLLER] No documents available for analysis after processing`);
+            res.status(400).json({ error: 'Failed to process any documents for analysis' });
             return;
         }
 
-        console.log(`[CONTROLLER] Analyzing ${chatSession.documents.length} documents from chat ${chatId}`);
+        console.log(`[CONTROLLER] Analyzing ${documentsList.length} documents from chat ${chatId}`);
 
         // Create a user message that includes any additional prompt from the user
         const userContent = prompt 
@@ -315,7 +368,7 @@ export const analyzeChatDocuments = async (req: Request<{ chatId: string }, {}, 
         
         try {
             // Use the JSON structured response method
-            const response = await mistralService.getStructuredJsonResponse(messagesToMistral, chatSession.documents);
+            const response = await mistralService.getStructuredJsonResponse(messagesToMistral, documentsList);
             analysisResult = response.result;
             tokenUsage = response.usage;
             console.log(`[CONTROLLER] Successfully received analysis result`);
