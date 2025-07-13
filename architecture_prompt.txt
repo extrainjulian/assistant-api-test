@@ -1,0 +1,26 @@
+BACKEND ARCHITECTURE - LAYERED APPROACH
+
+API Layer: HTTP interface, request validation, response formatting, auth middleware. Only depends on Application layer.
+
+Application Layer: Use case orchestration, transaction management, business workflows. Defines interfaces for Infrastructure.
+
+Domain Layer: Pure business logic, entities, validation rules. Zero external dependencies.
+
+Infrastructure Layer: Database, external APIs, file system. Implements Application interfaces.
+
+Rules: Domain has no dependencies. Application defines interfaces, Infrastructure implements. API only handles HTTP. No circular dependencies.
+
+FRONTEND ARCHITECTURE - THREE LAYER APPROACH
+
+Controllers: API calls, data fetching, global state management, heavy lifting. One per route/major feature.
+
+Composites: Intermediate components combining multiple components, local state, user interactions. Examples: Card, Form, SearchBar.
+
+Components: Basic UI elements with internal state only. No data fetching. Examples: Button, Input, Modal.
+
+Rules: Controllers handle external data. Composites combine components. Components stay pure UI with internal state only. Data flows down, events up.
+
+DEVELOPMENT FLOW
+
+Backend: Start Domain, define Application interfaces, implement Infrastructure, build API last.
+Frontend: Build Components first, compose into Composites, create Controllers for data management.
