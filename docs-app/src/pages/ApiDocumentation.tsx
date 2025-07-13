@@ -59,11 +59,13 @@ const EndpointCard: React.FC<{ endpoint: ApiEndpoint }> = ({ endpoint }) => {
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            {endpoint.authRequired ? (
-              <Lock className="w-4 h-4 text-red-500" title="Authentication required" />
-            ) : (
-              <Unlock className="w-4 h-4 text-green-500" title="No authentication required" />
-            )}
+            <div title={endpoint.authRequired ? "Authentication required" : "No authentication required"}>
+              {endpoint.authRequired ? (
+                <Lock className="w-4 h-4 text-red-500" />
+              ) : (
+                <Unlock className="w-4 h-4 text-green-500" />
+              )}
+            </div>
             {expanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
           </div>
         </div>
