@@ -1,0 +1,28 @@
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Compiled output
+dist/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# System Files
+.DS_Store
+Thumbs.db 
+
+# Vertex AI
+vertex-ai-455917-7a17dc1534c0.json
+vertex-ai-455917-7a17dc1534c0.json
